@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Reddit.Dtos;
 using Reddit.Mapper;
 using Reddit.Models;
+using System.Linq;
+using System.Linq.Expressions;
 
 
 namespace Reddit.Controllers
@@ -13,17 +15,34 @@ namespace Reddit.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IMapper _mapper;
+        IQueryable<Community> community;
+        IQueryable<Post> post;
 
         public CommunityController(ApplicationDbContext context, IMapper mapper)
         {
             _context = context;
             _mapper = mapper;
+            community = _context.Communities.AsQueryable();
+            post = _context.Posts.AsQueryable();
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Community>>> GetCommunities()
+        public async Task<ActionResult<IEnumerable<Community>>> GetCommunities(int pageNumber, int pageSize, string? searchTerm, string? SortTerm, bool? isAscending = true)
         {
-            return await _context.Communities.ToListAsync();
+            if (isAscending == false)
+            {
+                community = community.OrderByDescending(GetSortExpression(SortTerm));
+            }
+            else
+            {
+                community = community.OrderBy(GetSortExpression(SortTerm));
+            }
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                community = community.Where(c => c.Name.Contains(searchTerm) || c.Description.Contains(searchTerm);
+            }
+            return await _context.Communities.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
         }
 
         [HttpGet("{id}")]
@@ -79,5 +98,17 @@ namespace Reddit.Controllers
         }
 
         private bool CommunityExists(int id) => _context.Communities.Any(e => e.Id == id);
+
+        private Expression<Func<Community,object>> GetSortExpression(string? sortTerm)
+        {
+            sortTerm = sortTerm?.ToLower();
+            return sortTerm switch
+            {
+                "createdAt" => community => community.CreateAt,
+                "PostsCount" => community => post.Count(c => c.CommunityId == community.Id),
+                "subscribersCount" => community => community.Subscribers.Count(),
+                "id" => community => community.Id
+            };
+        }
     }
 }
